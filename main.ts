@@ -17,55 +17,146 @@ const OCTAVES = 10;
 
 const KEYBOARDWIDTH = OCTAVEWIDTH * OCTAVES;
 
-const BLACKOFFSETS = [14.33 * SCALE, 41.66 * SCALE, 82.25 * SCALE, 108.25 * SCALE, 134.75 * SCALE];
-
-const WHITEPITCHES = [0, 2, 4, 5, 7, 9, 11];
-const BLACKPITCHES = [1, 3, 6, 8, 10];
+const KEYOFFSETS = [0, 14.33, 23, 41.66, 46, 69, 82.25, 92, 108.25, 115, 134.75, 138].map((value) => value * SCALE);
 
 const piano = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 document.body.appendChild(piano);
 piano.setAttribute("height", String(WHITEHEIGHT));
 piano.setAttribute("width", String(KEYBOARDWIDTH));
 
+let clicked = false;
+window.addEventListener("mousedown", () => {
+    clicked = true;
+});
+window.addEventListener("mouseup", () => {
+    clicked = false;
+});
+
 for (let o = 0; o < OCTAVES; o++) {
     const whiteKeys = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    whiteKeys.setAttribute("transform", `translate(${161 * o})`);
-    for (let i = 0; i < 7; i++) {
-        const key = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        const note = o * 12 + WHITEPITCHES[i];
-        key.id = `note-${note}`;
-        key.style.fill = WHITEKEYUP;
-        key.style.stroke = "black";
-        key.setAttribute("x", String(i * WHITEWIDTH));
-        key.setAttribute("y", "0");
-        key.setAttribute("width", String(WHITEWIDTH));
-        key.setAttribute("height", String(WHITEHEIGHT));
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", String(i * WHITEWIDTH));
-        label.setAttribute("y", String(WHITEHEIGHT));
-        label.style.fill = "black";
-        label.textContent = String(note);
-        whiteKeys.appendChild(key);
-        whiteKeys.appendChild(label);
-    }
-    piano.appendChild(whiteKeys);
+    whiteKeys.setAttribute("transform", `translate(${OCTAVEWIDTH * o})`);
     const blackKeys = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    blackKeys.setAttribute("transform", `translate(${161 * o})`);
-    for (let i = 0; i < 5; i++) {
-        const key = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        key.style.fill = BLACKKEYUP;
-        key.style.stroke = "black";
-        key.setAttribute("x", String(BLACKOFFSETS[i]));
-        key.setAttribute("y", "0");
-        key.setAttribute("width", String(BLACKWIDTH));
-        key.setAttribute("height", String(BLACKHEIGHT));
-        blackKeys.appendChild(key);
-    }
+    blackKeys.setAttribute("transform", `translate(${OCTAVEWIDTH * o})`);
+    const labels = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    labels.setAttribute("transform", `translate(${OCTAVEWIDTH * o})`);
+    piano.appendChild(whiteKeys);
     piano.appendChild(blackKeys);
+    piano.appendChild(labels);
+    for (let i = 0; i < 12; i++) {
+        const key = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const note = o * 12 + i;
+        key.addEventListener("mousedown", () => {
+            pressKey(note);
+            sendNote(note);
+        });
+        key.addEventListener("mouseup", () => {
+            releaseKey(note);
+            stopNote(note);
+        });
+        key.addEventListener("mouseout", () => {
+            releaseKey(note);
+            stopNote(note);
+        });
+        key.addEventListener("mouseenter", () => {
+            if (clicked) {
+                pressKey(note);
+                sendNote(note);
+            }
+        });
+        key.id = `note-${note}`;
+        key.setAttribute("y", "0");
+        key.style.stroke = "black";
+        key.setAttribute("x", String(KEYOFFSETS[i]));
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.textContent = String(note);
+        label.setAttribute("x", String(KEYOFFSETS[i]));
+        label.style.userSelect = "none";
+        labels.appendChild(label);
+        if (isBlack(note)) {
+            key.style.fill = BLACKKEYUP;
+            key.setAttribute("width", String(BLACKWIDTH));
+            key.setAttribute("height", String(BLACKHEIGHT));
+            blackKeys.appendChild(key);
+            label.setAttribute("y", String(BLACKHEIGHT));
+            label.style.fill = "white";
+        } else {
+            key.style.fill = WHITEKEYUP;
+            key.setAttribute("width", String(WHITEWIDTH));
+            key.setAttribute("height", String(WHITEHEIGHT));
+            whiteKeys.appendChild(key);
+            label.setAttribute("y", String(WHITEHEIGHT));
+            label.style.fill = "black";
+        }
+    }
 }
-
-pressKey(63);
 
 function pressKey(note: number): void {
     document.getElementById(`note-${note}`).style.fill = WHITEKEYDOWN;
+}
+
+function releaseKey(note: number): void {
+    document.getElementById(`note-${note}`).style.fill = isBlack(note) ? BLACKKEYUP : WHITEKEYUP;
+}
+
+function openMIDI() {
+    if (navigator.requestMIDIAccess) {
+        navigator
+            .requestMIDIAccess({
+                sysex: false,
+            })
+            .then((midi) => {
+                midi.inputs.forEach((input) => {
+                    input.onmidimessage = onMIDIMessage;
+                });
+                midi.outputs.forEach((output) => {
+                    outputs.push(output);
+                });
+            })
+            .catch((e) => console.log(e.message));
+    }
+}
+
+const outputs = [] as WebMidi.MIDIOutput[];
+
+function sendNote(pitch: number) {
+    outputs.forEach((output) => {
+        output.send([144, pitch, 127]);
+    });
+}
+function stopNote(pitch: number) {
+    outputs.forEach((output) => {
+        output.send([128, pitch, 0]);
+    });
+}
+
+sendNote(60);
+
+function onMIDIMessage(event: WebMidi.MIDIMessageEvent): void {
+    const [type, pitch, vel] = event.data;
+    switch (type) {
+        case 144:
+            //Note On
+            if (vel > 0) {
+                pressKey(pitch);
+            }
+            //Note Off
+            else {
+                releaseKey(pitch);
+            }
+            break;
+    }
+}
+openMIDI();
+
+function isBlack(note: number): boolean {
+    const pitch = Math.floor(note % 12);
+    switch (pitch) {
+        case 1:
+        case 3:
+        case 6:
+        case 8:
+        case 10:
+            return true;
+    }
+    return false;
 }
