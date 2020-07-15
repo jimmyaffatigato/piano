@@ -2,7 +2,6 @@
 
 const WHITEKEYUP = "white";
 const BLACKKEYUP = "black";
-const WHITEKEYDOWN = "yellow";
 const BLACKKEYDOWN = "red";
 
 const SCALE = 1;
@@ -24,6 +23,7 @@ document.body.appendChild(piano);
 piano.setAttribute("height", String(WHITEHEIGHT));
 piano.setAttribute("width", String(KEYBOARDWIDTH));
 
+const LABELS = false;
 let clicked = false;
 window.addEventListener("mousedown", () => {
     clicked = true;
@@ -46,7 +46,7 @@ for (let o = 0; o < OCTAVES; o++) {
         const key = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         const note = o * 12 + i;
         key.addEventListener("mousedown", () => {
-            pressKey(note);
+            pressKey(note, 127);
             sendNote(note);
         });
         key.addEventListener("mouseup", () => {
@@ -59,7 +59,7 @@ for (let o = 0; o < OCTAVES; o++) {
         });
         key.addEventListener("mouseenter", () => {
             if (clicked) {
-                pressKey(note);
+                pressKey(note, 127);
                 sendNote(note);
             }
         });
@@ -71,7 +71,7 @@ for (let o = 0; o < OCTAVES; o++) {
         label.textContent = String(note);
         label.setAttribute("x", String(KEYOFFSETS[i]));
         label.style.userSelect = "none";
-        labels.appendChild(label);
+        LABELS ? labels.appendChild(label) : {};
         if (isBlack(note)) {
             key.style.fill = BLACKKEYUP;
             key.setAttribute("width", String(BLACKWIDTH));
@@ -90,8 +90,9 @@ for (let o = 0; o < OCTAVES; o++) {
     }
 }
 
-function pressKey(note: number): void {
-    document.getElementById(`note-${note}`).style.fill = WHITEKEYDOWN;
+function pressKey(note: number, vel: number): void {
+    const g = 255 - vel * 2;
+    document.getElementById(`note-${note}`).style.fill = `#ffff${g.toString(16).padStart(2, "0")}`;
 }
 
 function releaseKey(note: number): void {
@@ -101,9 +102,7 @@ function releaseKey(note: number): void {
 function openMIDI() {
     if (navigator.requestMIDIAccess) {
         navigator
-            .requestMIDIAccess({
-                sysex: false,
-            })
+            .requestMIDIAccess()
             .then((midi) => {
                 midi.inputs.forEach((input) => {
                     input.onmidimessage = onMIDIMessage;
@@ -112,7 +111,7 @@ function openMIDI() {
                     outputs.push(output);
                 });
             })
-            .catch((e) => console.log(e.message));
+            .catch((e) => console.error(e.message));
     }
 }
 
@@ -129,15 +128,13 @@ function stopNote(pitch: number) {
     });
 }
 
-sendNote(60);
-
 function onMIDIMessage(event: WebMidi.MIDIMessageEvent): void {
     const [type, pitch, vel] = event.data;
     switch (type) {
         case 144:
             //Note On
             if (vel > 0) {
-                pressKey(pitch);
+                pressKey(pitch, vel);
             }
             //Note Off
             else {
